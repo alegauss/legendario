@@ -24,6 +24,8 @@ Measure for each:
 Run on an RTX card, an Intel iGPU, an AMD card if one is available, and CPU only. Record
 each licence against Modelado's whitelist (MIT, Apache-2.0, BSD, CC-BY-4.0).
 
+The first slice's numbers are in `spike/asr-engines/README.md`.
+
 **Decision output:** the default engine and model for GPU, for CPU, and for NPU where
 one exists, and whether a native host process is needed.
 

@@ -17,8 +17,7 @@ var inv = CultureInfo.InvariantCulture;
 var engine = args[0];
 var lang = args[1];
 var clips = args.Length > 3 && args[2] == "--clips" ? int.Parse(args[3], inv) : 30;
-var cache = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "cache");
-cache = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "cache"));
+var cache = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "cache"));
 
 var corpus = Corpus.Load(Path.Combine(cache, "fleurs", lang), clips);
 var vram = new VramSampler();
