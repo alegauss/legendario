@@ -2,7 +2,7 @@
 
 ## Block A — Feasibility spikes
 
-- 📋 **LE2** (deps: —) **Spike: no ASR engine chosen; Whisper on ONNX, whisper.cpp and sherpa-onnx are unmeasured on DirectX GPUs** — ASR is the largest share of latency and VRAM, and the runtime choice decides whether Revelei's Windows ML provider stack can be reused unchanged. → §LE2
+- 🛠 **LE2** (deps: —) **Spike: no ASR engine chosen; Whisper on ONNX, whisper.cpp and sherpa-onnx are unmeasured on DirectX GPUs** — ASR is the largest share of latency and VRAM, and the runtime choice decides whether Revelei's Windows ML provider stack can be reused unchanged. → §LE2
 - 📋 **LE3** (deps: —) **Spike: no MT model chosen; Opus-MT, MADLAD, HY-MT and small LLMs untested for speed, quality and licence** — Translation runs after every committed sentence, so per-sentence latency matters more than throughput, and NC licences like NLLB's would block redistribution. → §LE3
 - 📋 **LE4** (deps: LE2, LE3) **Spike: no streaming policy; chunking, commit and re-translation trade-offs between latency and flicker unknown** — Whisper is not a streaming model, and the commit policy alone decides how long a caption takes to appear and how often it rewrites itself. → §LE4
 - 📋 **LE5** (deps: —) **Spike: unknown whether a WPF Fluent window can float click-through and topmost over fullscreen video and games** — The overlay is the product's whole surface, and WPF's AllowsTransparency path is known to cost GPU and break Mica, so the window technique must be proven first. → §LE5
