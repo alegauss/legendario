@@ -2,10 +2,10 @@
 
 ## Block A — Feasibility spikes
 
-- 📋 **LE3** (deps: —) **Spike: no MT model chosen; Opus-MT, MADLAD, HY-MT and small LLMs untested for speed, quality and licence** — Translation runs after every committed sentence, so per-sentence latency matters more than throughput, and NC licences like NLLB's would block redistribution. → §LE3
-- 📋 **LE4** (deps: LE2 ✅, LE3) **Spike: no streaming policy; chunking, commit and re-translation trade-offs between latency and flicker unknown** — Whisper is not a streaming model, and the commit policy alone decides how long a caption takes to appear and how often it rewrites itself. → §LE4
+- ⏳ **LE3** (deps: —) **Spike: no MT model chosen; Opus-MT, MADLAD, HY-MT and small LLMs untested for speed, quality and licence** — Direct ja-pt and es-pt models, MADLAD-400, a Qwen3 LLM tier, beam, context and tokenizer parity are still unmeasured. → §LE3
+- 📋 **LE4** (deps: LE2 ✅, LE3 ⏳) **Spike: no streaming policy; chunking, commit and re-translation trade-offs between latency and flicker unknown** — Whisper is not a streaming model, and the commit policy alone decides how long a caption takes to appear and how often it rewrites itself. → §LE4
 - 📋 **LE5** (deps: —) **Spike: unknown whether a WPF Fluent window can float click-through and topmost over fullscreen video and games** — The overlay is the product's whole surface, and WPF's AllowsTransparency path is known to cost GPU and break Mica, so the window technique must be proven first. → §LE5
-- 📋 **LE6** (deps: LE2 ✅, LE3) **Spike: unknown how ASR and MT share one GPU with each other and with the game or video being captioned** — Captions are watched over GPU-heavy content, so contention can blow the latency budget or drop the user's frame rate, and that decides device placement per stage. → §LE6
+- 📋 **LE6** (deps: LE2 ✅, LE3 ⏳) **Spike: unknown how ASR and MT share one GPU with each other and with the game or video being captioned** — Captions are watched over GPU-heavy content, so contention can blow the latency budget or drop the user's frame rate, and that decides device placement per stage. → §LE6
 - 💭 **LE7** (deps: —) **Spike: Windows Live Captions text is unused as a zero-model ASR source for low-end PCs** — Reading Live Captions through UI Automation, as LiveCaptions-Translator does, would give PCs without a capable GPU captions with no ASR model to download. → §LE7
 - 📋 **LE50** (deps: LE2 ✅) **Spike: ASR untested with a static KV cache, TensorRT-RTX, streaming zipformer, real captured clips or AMD GPUs** — LE2's defaults rest on one RTX machine and read speech, and a static-cache export could make Revelei's provider stack fast enough for ASR. → §LE50
 
@@ -28,7 +28,7 @@
 ## Block D — Local inference runtime and models
 
 - 📋 **LE18** (deps: LE8, LE2 ✅) **No execution-provider stack: nothing picks the GPU, probes Windows ML or DirectML, or falls back to CPU** — Revelei already measured and solved provider choice on DirectX, including its 887A0004 and System32 traps, so porting it gives GPU inference without relearning them. → §LE18
-- 📋 **LE19** (deps: LE18, LE3) **No model manifest, downloader or library: ASR, MT and VAD models cannot be fetched, verified or found** — Speech and MT models are multi-file encoder-decoder sets with tokenizers and language pairs, which Modelado's one-file-per-model manifest cannot describe (its MOD124). → §LE19
+- 📋 **LE19** (deps: LE18, LE3 ⏳) **No model manifest, downloader or library: ASR, MT and VAD models cannot be fetched, verified or found** — Speech and MT models are multi-file encoder-decoder sets with tokenizers and language pairs, which Modelado's one-file-per-model manifest cannot describe (its MOD124). → §LE19
 - 📋 **LE20** (deps: LE19) **No reproducible pipeline exports, quantises, verifies and publishes the chosen ASR and MT models as ONNX** — Pinned, hash-checked artefacts with licence checks make the manifest trustworthy, and hand-exported files cannot be rebuilt when an upstream model updates. → §LE20
 - 📋 **LE21** (deps: LE4, LE6, LE18) **No real-time scheduler: a batch job queue would let ASR and MT fall behind live audio without bound** — Revelei's single-job channel suits batch work, but captions have deadlines, so stages need bounded queues, priorities and a policy for shedding work when behind. → §LE21
 - 📋 **LE22** (deps: LE19, LE21) **No hardware fit: users cannot tell which ASR and MT model sizes their PC can run in real time** — A model that cannot keep up live is worse than a smaller one that can, so the first-use flow must recommend sizes from measured speed, not only from VRAM. → §LE22
@@ -45,10 +45,10 @@
 
 ## Block F — Real-time translation
 
-- 📋 **LE30** (deps: LE3, LE19, LE21, LE28) **No translator: committed sentences cannot be translated, and no contract hides the MT engine LE3 picks** — MT engines differ by pair, size and runtime, so the pipeline needs one ITranslator contract, with the first engine running on the placement LE6 chose. → §LE30
+- 📋 **LE30** (deps: LE3 ⏳, LE19, LE21, LE28) **No translator: committed sentences cannot be translated, and no contract hides the MT engine LE3 picks** — MT engines differ by pair, size and runtime, so the pipeline needs one ITranslator contract, with the first engine running on the placement LE6 chose. → §LE30
 - 📋 **LE31** (deps: LE30, LE27) **No pair routing: a source language with no direct model to the target has no translation path** — Opus-MT ships one model per direction and many pairs into Portuguese are missing, so an English pivot and on-demand pair download are what make auto-detect usable. → §LE31
 - 📋 **LE32** (deps: LE30, LE4) **Translation appears only after a sentence commits, so long sentences leave the target line blank for seconds** — Viewers need words early, and translating the stable prefix as a replaceable draft can halve perceived delay if flicker stays under control. → §LE32
-- 💭 **LE33** (deps: LE30, LE3) **Sentence-by-sentence MT loses context: pronouns, gender and register drift across lines** — A small LLM fed the previous lines translates conversation more naturally, and LE3 measures whether a GPU can afford it as an optional quality tier. → §LE33
+- 💭 **LE33** (deps: LE30, LE3 ⏳) **Sentence-by-sentence MT loses context: pronouns, gender and register drift across lines** — A small LLM fed the previous lines translates conversation more naturally, and LE3 measures whether a GPU can afford it as an optional quality tier. → §LE33
 - 💭 **LE34** (deps: LE30, LE24) **Names, jargon and product terms are mistranslated, and the user cannot pin how a term is rendered** — Recurring names in a show or meeting get mangled on every line, and a user glossary fixes them for both ASR spelling and MT output. → §LE34
 
 ## Block G — Caption overlay
@@ -79,6 +79,13 @@
 - **Every spike has a README with numbers and a decision** Each spike/<name>/README.md
   states the hardware, the measured table, the chosen option and what was rejected and
   why; the tasks that depend on it cite that decision instead of re-deciding.
+
+## Done when — LE3
+
+- **Direct es→pt and ja→pt models and a Qwen3 LLM tier are measured**
+  spike/mt-engines/README.md has rows for opus-mt-ja-pt, opus-mt-tc-big-itc-itc and
+  Qwen3 1.7B/4B on the same 100 FLORES sentences, so es→pt and ja→pt get a default and
+  the quality tier is decided.
 
 ## Non-goals
 

@@ -27,6 +27,9 @@ Note also:
 - how each model handles disfluent ASR output with no punctuation;
 - which pairs need English as a pivot.
 
+The Opus-MT slice's numbers are in `spike/mt-engines/README.md`. HY-MT's licence
+excludes the EU, the UK and South Korea.
+
 **Decision output:**
 - the default model per pair;
 - whether it runs on the GPU next to ASR or on the CPU;
