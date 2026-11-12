@@ -2,6 +2,8 @@
 
 ## Block A — Feasibility spikes
 
+- ⏸ **LE49** (deps: —) **Spike: capture untested through device unplug, Bluetooth A2DP/HFP switch and DRM-protected playback** — set aside (Needs a person at the PC.): LE1's reconnect logic and LE17's protected-content heuristic rest on behaviour only a person plugging devices and playing Netflix can observe. → §LE49
+
 ## Block B — Project foundation
 
 ## Block C — Audio capture

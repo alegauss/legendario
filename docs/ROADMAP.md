@@ -2,7 +2,6 @@
 
 ## Block A — Feasibility spikes
 
-- 📋 **LE1** (deps: —) **Spike: no measured way yet to capture system, per-app and mic audio from C# at low latency** — Every caption starts at the capture buffer, and neither sibling app has audio code, so the API and its latency must be measured before Block C is built. → §LE1
 - 📋 **LE2** (deps: —) **Spike: no ASR engine chosen; Whisper on ONNX, whisper.cpp and sherpa-onnx are unmeasured on DirectX GPUs** — ASR is the largest share of latency and VRAM, and the runtime choice decides whether Revelei's Windows ML provider stack can be reused unchanged. → §LE2
 - 📋 **LE3** (deps: —) **Spike: no MT model chosen; Opus-MT, MADLAD, HY-MT and small LLMs untested for speed, quality and licence** — Translation runs after every committed sentence, so per-sentence latency matters more than throughput, and NC licences like NLLB's would block redistribution. → §LE3
 - 📋 **LE4** (deps: LE2, LE3) **Spike: no streaming policy; chunking, commit and re-translation trade-offs between latency and flicker unknown** — Whisper is not a streaming model, and the commit policy alone decides how long a caption takes to appear and how often it rewrites itself. → §LE4
@@ -19,8 +18,8 @@
 
 ## Block C — Audio capture
 
-- 📋 **LE12** (deps: LE1, LE10) **The app cannot hear what the PC is playing: no system loopback capture source** — Captioning whatever plays on the PC is the Live Captions behaviour users expect, and every other source builds on the same IAudioSource contract and frame clock. → §LE12
-- 📋 **LE13** (deps: LE1, LE10) **Captured audio arrives at 44.1/48 kHz stereo while every ASR and VAD model expects 16 kHz mono** — A poor resampler aliases and costs WER, and a slow one adds latency on every frame, so conversion needs its own tested, allocation-free stage. → §LE13
+- 📋 **LE12** (deps: LE1 ✅, LE10) **The app cannot hear what the PC is playing: no system loopback capture source** — Captioning whatever plays on the PC is the Live Captions behaviour users expect, and every other source builds on the same IAudioSource contract and frame clock. → §LE12
+- 📋 **LE13** (deps: LE1 ✅, LE10) **Captured audio arrives at 44.1/48 kHz stereo while every ASR and VAD model expects 16 kHz mono** — A poor resampler aliases and costs WER, and a slow one adds latency on every frame, so conversion needs its own tested, allocation-free stage. → §LE13
 - 📋 **LE14** (deps: LE13) **No voice activity detection: silence and music reach the ASR, wasting GPU and inviting hallucinated captions** — Whisper invents text on silence and music, and segment boundaries drive both the commit policy and the GPU duty cycle, so VAD gates everything downstream. → §LE14
 - 📋 **LE15** (deps: LE12) **Cannot caption one app only; system loopback mixes in game music, notifications and other apps** — Per-app capture is a feature Live Captions lacks and cleans the ASR input, which matters most for meetings and for games with music under the dialogue. → §LE15
 - 📋 **LE16** (deps: LE12) **No microphone source, so in-person speech and the user's own voice in a call cannot be captioned** — Live Captions offers microphone captions, and a mic+system "meeting" mode lets both sides of a call be captioned and translated with a speaker label. → §LE16

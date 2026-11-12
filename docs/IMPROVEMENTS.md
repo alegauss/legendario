@@ -2,36 +2,6 @@
 
 ## Block A — Feasibility spikes
 
-### §LE1 Audio capture spike: WASAPI loopback, process loopback and microphone
-
-Build `spike/audio-capture/` as a console app that records 60 s from each source and
-writes WAV plus a timing CSV. Its README records the decision, in the same style as
-Revelei's `spike/onnx-runtime/README.md`.
-
-DirectSound is not the "Direct" API to use here. It is a legacy emulation layer on top
-of WASAPI and has no loopback. XAudio2 only plays audio. The APIs to compare are:
-
-- **WASAPI shared-mode loopback** on the default render endpoint (`AUDCLNT_STREAMFLAGS_LOOPBACK | EVENTCALLBACK`), with 10 ms and 20 ms buffers.
-- **Process loopback**: `ActivateAudioInterfaceAsync` with `AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK`, in both include-tree and exclude-tree modes. Requires Windows 10 build 20348 or later.
-- **Microphone capture** from a chosen endpoint.
-
-Implement each one twice, once with NAudio 2.x (`WasapiLoopbackCapture`) and once with
-raw COM through CsWin32. NAudio does not wrap process loopback.
-
-Measure:
-- callback jitter;
-- glitch and discontinuity flags (`AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY`);
-- CPU per hour;
-- behaviour when the default device changes (headset plugged in or removed, Bluetooth switching from A2DP to HFP);
-- the silence that loopback returns while nothing is playing (no packets at all);
-- what DRM-protected playback looks like (Netflix in Edge, PlayReady) and whether it is captured silent.
-
-Also compare two ways of getting to 16 kHz mono float: the Media Foundation resampler
-DSP and a managed polyphase filter.
-
-**Decision output:** the library to use, the buffer size, the reconnect strategy, and
-the minimum OS build for per-app capture.
-
 ### §LE2 ASR engine spike: Whisper ONNX vs whisper.cpp vs sherpa-onnx
 
 Build `spike/asr-engines/` as a C# bench that runs the same corpus through each
@@ -195,6 +165,32 @@ If the spike succeeds, the source is filed as an optional "System captions" engi
 a clear notice that it depends on Windows. If it fails, write the reason here and retire
 the idea.
 
+### §LE49 Manual capture runs: device changes and DRM
+
+LE1 measured cadence, latency, silence and CPU unattended, but three behaviours need a
+person at the machine. Run them with `spike/audio-capture` and add the numbers to its
+README.
+
+**Device changes.** Run `capture raw loopback --tone 440 --follow-default --seconds 120`
+and, during the run:
+- plug in and unplug a wired headset;
+- switch the default playback device in Settings;
+- connect a Bluetooth headset, then start a call so it switches from A2DP to HFP.
+
+Record, from the summary's event lines, which of `OnDefaultDeviceChanged` and
+`AUDCLNT_E_DEVICE_INVALIDATED` arrives first, how long the reopen takes, how many frames
+are lost, and whether the mix format changes. Repeat with `capture raw process` to see
+whether process loopback survives a device change without reopening. Do the same for the
+microphone (`capture raw mic --follow-default`).
+
+**DRM.** Play a PlayReady-protected stream (Netflix in Edge) while running endpoint
+loopback and process loopback on the browser's process. Record whether the capture is
+exact digital zero, `SILENT`-flagged, or real audio. LE17's "possibly protected content"
+heuristic depends on the answer.
+
+**Decision output:** the reconnect timing LE12 can promise, and the signature LE17 uses
+to recognise protected content.
+
 ## Block B — Project foundation
 
 ### §LE8 Solution skeleton ported from Revelei
@@ -336,7 +332,7 @@ and buffer size LE1 chose.
 **Capture thread:**
 - An event-driven capture thread, registered with MMCSS ("Audio") through `AvSetMmThreadCharacteristics`, copies each packet into a pooled buffer (`ArrayPool<float>`) and never allocates on the hot path.
 - A bounded channel (about 2 s) sits between the capture thread and the pipeline. When it is full, the oldest frames are dropped and the drop is counted. The capture thread must never block.
-- Loopback delivers no packets while nothing plays, so the source synthesises silent frames to keep the downstream clock continuous.
+- Loopback delivers no packets while nothing plays, so the source synthesises silent frames to keep the downstream clock continuous. LE1 showed the device position jumps by exactly the gap, and the first packet's discontinuity flag is always set.
 
 **Device changes.** An `IMMNotificationClient` follows default-device changes. On
 `OnDefaultDeviceChanged`, or on `AUDCLNT_E_DEVICE_INVALIDATED`, the source reopens on
@@ -351,12 +347,14 @@ the new endpoint within 500 ms and emits a discontinuity.
 ### §LE13 Downmix and resample to 16 kHz mono
 
 Implement `AudioConverter` as a streaming stage, `AudioFrame` in and `Pcm16kFrame` out.
-Use the approach LE1 chose; the default is a managed polyphase windowed-sinc resampler.
+LE1 chose the audio engine's own converter (`AUTOCONVERTPCM`, 16 kHz mono float) for
+every WASAPI source, so this stage serves only other input: the LE10 replay corpus and
+files.
 
 **Pipeline:**
 1. Downmix to mono. Average the channels; for 5.1 and 7.1, weight the centre channel up, because dialogue lives there.
 2. A DC blocker.
-3. Resample with a polyphase filter. Use a Kaiser window, 64 taps per phase, and a cutoff at 7.6 kHz, so aliasing stays below −80 dB. The rational ratios 160/441 and 1/3 are covered.
+3. Resample with the Media Foundation resampler DSP at quality 60, which LE1 measured flat to 7 kHz with over 100 dB of alias rejection at 0.1 % of a core. A 64-tap Kaiser filter cannot pair a 7.6 kHz cutoff with −80 dB.
 4. Optional peak normalisation for very quiet sources, with a capped gain.
 
 **Implementation:**
@@ -410,8 +408,8 @@ which is logged.
 Implement `ProcessLoopbackAudioSource : IAudioSource` with `ActivateAudioInterfaceAsync`
 and `AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK`. Use
 `PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE` so browsers, which play audio from
-child processes, are captured whole. The interop is generated with CsWin32, following
-LE1's decision.
+child processes, are captured whole. The interop is hand-written `[ComImport]`, as in
+LE1's spike, which also showed `GetDevicePeriod` answers `E_NOTIMPL` here.
 
 **Picker.** `AudioSessions.Enumerate()` lists the active render sessions through
 `IAudioSessionManager2` and `IAudioSessionEnumerator`. Each entry carries the process
@@ -477,7 +475,7 @@ States:
 - **Receiving speech**
 - **Audio, no speech**: music or effects
 - **Silence**: nothing is playing
-- **Endpoint muted**, read from `IAudioEndpointVolume.GetMute` and the master volume. The source app's own session mute is read from `ISimpleAudioVolume`.
+- **Endpoint muted**, read from `IAudioEndpointVolume.GetMute` and the master volume. Shown as information only: LE1 found that endpoint loopback still captures while the speakers are muted. The source app's own session mute is read from `ISimpleAudioVolume`.
 - **Possibly protected content**: the player is known to be playing, yet the capture is exactly zero for more than 5 s. This is the case LE1 documents.
 - **Device lost, reconnecting**
 
