@@ -1,12 +1,18 @@
-# ASR engine spike (LE2), first slice
+# ASR engine spike (LE2)
 
 Which speech recognition engine and model Legendario runs, on which hardware. This folder
 is a record of the answer, not live code: it is outside any solution and no gate builds it.
 
-This slice measures the two engines that ship as NuGet packages: whisper.cpp through
-Whisper.net, and sherpa-onnx with Parakeet. It ran on this machine only. Whisper exported
-to ONNX on the Windows ML provider stack, onnxruntime-genai, the streaming zipformer,
-captured clips (podcast, game, call) and other GPUs are still open on LE2.
+Three runtimes were measured on one machine:
+
+- whisper.cpp through Whisper.net (`AsrBench`);
+- sherpa-onnx with Parakeet (`AsrBench`);
+- Whisper exported to ONNX, decoded by our own greedy loop on the ONNX Runtime DirectML
+  package Revelei ships (`whisper-ort\`).
+
+Not measured: onnxruntime-genai, TensorRT-RTX through Windows ML, the streaming zipformer,
+captured clips (podcast, game, call) and an AMD GPU. They are filed as their own roadmap
+line.
 
 ## How it was measured
 
@@ -104,15 +110,72 @@ What the runs showed:
 - **Licences.** Whisper weights, whisper.cpp and Whisper.net are MIT; sherpa-onnx is
   Apache-2.0; Parakeet-TDT-0.6B-v3 is CC-BY-4.0. All four are on the whitelist.
 
-## Decision so far
+## Whisper ONNX on DirectML
+
+`whisper-ort\` runs onnx-community's fp16 exports (`encoder_model_fp16.onnx`,
+`decoder_model_fp16.onnx`, `decoder_with_past_model_fp16.onnx`) on
+Microsoft.ML.OnnxRuntime.DirectML 1.24.4. It does its own log-mel (Slaney filters, 30 s
+padding), byte-level BPE decoding and a greedy loop with a KV cache. Run it from this
+folder:
+
+```
+dotnet build -c Release whisper-ort
+whisper-ort\bin\Release\net10.0-windows\win-x64\WhisperOrt.exe onnx-whisper-large-v3-turbo pt_br [--device N] [--bind]
+```
+
+It is a separate project because the sherpa-onnx package ships its own CPU-only
+`onnxruntime.dll`, which would collide with DirectML's.
+
+| Model | Lang | RTF | 2 s window | 10 s window | WER | Peak RAM | Cold start | Encoder, per token |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| small fp16 | pt_br | 0.230 | 730 ms | 2,773 ms | 6.1 % | 1,147 MB | 3.5 s + 1.9 s | 117 ms, 70.1 ms |
+| small fp16 | en_us | 0.199 | 529 ms | 2,156 ms | 5.4 % | 1,080 MB | 3.1 s + 1.7 s | 114 ms, 67.7 ms |
+| small fp16 | es_419 | 0.242 | 507 ms | 2,714 ms | 7.7 % | 1,110 MB | 3.5 s + 1.9 s | 107 ms, 69.8 ms |
+| large-v3-turbo fp16 | pt_br | 0.125 | 575 ms | 1,685 ms | 4.5 % | 1,401 MB | 5.6 s + 2.1 s | 318 ms, 32.0 ms |
+| large-v3-turbo fp16 | en_us | 0.119 | 537 ms | 1,338 ms | 5.3 % | 1,400 MB | 5.2 s + 1.7 s | 299 ms, 32.6 ms |
+| large-v3-turbo fp16 | es_419 | 0.133 | 512 ms | 1,419 ms | 3.1 % | 1,401 MB | 5.0 s + 2.0 s | 302 ms, 31.6 ms |
+
+All on the RTX 4060 (DirectML device 0), with GPU memory rising by 1.8 to 2.0 GB for small
+and 2.9 GB for turbo.
+
+What the runs showed:
+
+- **DirectML loses to Vulkan on the decoder, not the encoder.** The turbo encoder takes
+  about 0.3 s for 30 s of input. Each decoder step costs about 32 ms on turbo (4 decoder
+  layers) and 70 ms on small (12 layers), whatever the sequence length. That is overhead
+  per layer per step, not arithmetic: the KV cache grows by one position every step, so
+  every step runs with new shapes. A 2 s window, which has few tokens, costs the same as
+  on whisper.cpp (0.5 s). A 10 s window costs 1.3 to 1.7 s against whisper.cpp's 0.5 to
+  0.6 s.
+- **turbo is faster than small on DirectML.** It has a third of the decoder layers. On
+  whisper.cpp the order is the other way round.
+- **fp16 is slightly more accurate than q5_0:** 3.1 to 5.3 % WER against 3.9 to 5.4 %.
+- **Keeping the cache on the GPU does not work across sessions.** With `--bind`, every
+  tensor except the logits stays in DirectML memory through an `OrtIoBinding`. Feeding
+  one session's device outputs into the next session produced garbage ("İs İs İs..."):
+  each DirectML session has its own allocator. Binding the same outputs to CPU memory
+  (`LE2_CPU_OUT=1`) decodes correctly at the same 69 ms per token as plain `Run`. So the
+  copies are not what costs; the dynamic shapes are.
+- **The fix is a static KV cache**, which is what onnxruntime-genai builds (a
+  max-length buffer shared between past and present). Measuring it needs a model export
+  made with genai's builder, and it is the main item in the follow-up line.
+
+## Decision
 
 - **GPU default: whisper.cpp large-v3-turbo q5_0 on Vulkan**, with small as the
-  lower-tier model. Vulkan reaches NVIDIA, AMD and Intel GPUs without CUDA. That holds
-  unless the ONNX path on Windows ML, measured in the next slice, is clearly faster on the
-  same card. If it is, Revelei's provider stack applies unchanged.
-- **CPU default: Parakeet-TDT-0.6B-v3 int8 through sherpa-onnx**, with Whisper on the CPU
-  ruled out for live use. Its uneven per-call cost needs a second look before it is
-  final.
+  lower-tier model. It is 2.5 to 3 times faster than ONNX on DirectML on 10 s windows, at
+  similar WER. Vulkan also reaches NVIDIA, AMD and Intel GPUs without CUDA.
+- **Revelei's provider stack does not apply unchanged to Whisper.** A plain greedy loop on
+  DirectML is too slow on long windows. It becomes a candidate again only with a
+  static-cache export through onnxruntime-genai, or with TensorRT-RTX through Windows ML,
+  and that is the follow-up line. LE18's provider ladder still serves MT, VAD and any
+  encoder-only model.
+- **CPU default: Parakeet-TDT-0.6B-v3 int8 through sherpa-onnx.** Whisper on the CPU is
+  ruled out for live use, because its 30 s padding makes every window cost 2.6 s with
+  small and 12.5 s with turbo. Parakeet's uneven per-call cost needs a second look before
+  it is final.
 - **NPU: not measured.** This machine has none.
-- **Host process: not needed for performance.** In-process Whisper.net and sherpa-onnx
-  both ran cleanly.
+- **Host process: not needed for performance.** In-process Whisper.net, sherpa-onnx and
+  ONNX Runtime all ran cleanly. Two native ONNX Runtimes (sherpa-onnx's CPU build and
+  DirectML) cannot share one process. That is a reason to isolate whichever engine
+  brings its own runtime.

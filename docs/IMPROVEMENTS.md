@@ -2,33 +2,6 @@
 
 ## Block A — Feasibility spikes
 
-### §LE2 ASR engine spike: Whisper ONNX vs whisper.cpp vs sherpa-onnx
-
-Build `spike/asr-engines/` as a C# bench that runs the same corpus through each
-candidate. The corpus is about 20 min of pt-BR, en and es from FLEURS (CC-BY-4.0) plus
-captured clips of a podcast, a game and a call.
-
-Candidates:
-- **Whisper** large-v3-turbo, small and base, exported to ONNX as encoder and decoder with a KV cache. Run it two ways: onnxruntime-genai (C# API, still in preview), and our own greedy loop on the Windows ML ONNX Runtime, so the provider stack ported from Revelei (DirectML, TensorRT-RTX, OpenVINO, QNN) applies as it is.
-- **whisper.cpp through Whisper.net** with the Vulkan and CPU backends. Run it out of process, following Revelei's `Generation.Host` pattern.
-- **sherpa-onnx C#** with Parakeet-TDT-0.6B-v3 (offline, CC-BY-4.0, 25 European languages) and a streaming zipformer.
-
-Measure for each:
-- real-time factor;
-- latency to the first token on a 2 s chunk and on a 10 s chunk;
-- WER per language, scored with jiwer in Python;
-- peak VRAM and RAM;
-- the cold-start time, including the TensorRT-RTX engine build;
-- whether the output timestamps can drive streaming commits.
-
-Run on an RTX card, an Intel iGPU, an AMD card if one is available, and CPU only. Record
-each licence against Modelado's whitelist (MIT, Apache-2.0, BSD, CC-BY-4.0).
-
-The first slice's numbers are in `spike/asr-engines/README.md`.
-
-**Decision output:** the default engine and model for GPU, for CPU, and for NPU where
-one exists, and whether a native host process is needed.
-
 ### §LE3 MT engine spike: dedicated MT models vs small LLMs
 
 Build `spike/mt-engines/` to translate the FLORES-200 devtest sentences for en→pt,
@@ -192,6 +165,30 @@ heuristic depends on the answer.
 
 **Decision output:** the reconnect timing LE12 can promise, and the signature LE17 uses
 to recognise protected content.
+
+### §LE50 ASR follow-up: static cache, TensorRT-RTX, zipformer, real clips
+
+LE2 chose whisper.cpp on Vulkan for the GPU and Parakeet on sherpa-onnx for the CPU,
+from runs on one RTX 4060 machine (`spike/asr-engines/README.md`). These measurements
+could still change that choice. Add each one to the same README, with the same corpus
+and columns.
+
+- **Static KV cache.** Export Whisper large-v3-turbo with onnxruntime-genai's model
+  builder and run it through `Microsoft.ML.OnnxRuntimeGenAI.DirectML`. LE2's own loop
+  pays about 32 ms per decoder step on DirectML because the cache shape grows every step.
+  If genai's shared past/present buffer removes that cost, Revelei's provider ladder
+  applies to ASR after all, and LE18 needs one stack instead of two.
+- **TensorRT-RTX through Windows ML** (`Microsoft.Windows.AI.MachineLearning`), on the
+  same export, including the engine build time that LE23 has to hide.
+- **The streaming zipformer** in sherpa-onnx. It is a true streaming model and might
+  make LE25's commit policy unnecessary on the CPU tier.
+- **Parakeet's uneven per-call cost.** A 2 s window took 0.65 to 2.2 s across runs;
+  repeat with fixed thread counts.
+- **Captured clips:** a podcast, a game with music, and a call, recorded through
+  `spike/audio-capture`. FLEURS is read speech and flatters every engine.
+- **An AMD GPU and a CPU-only laptop**, if either becomes available.
+
+**Decision output:** confirm or replace LE2's GPU and CPU defaults.
 
 ## Block B — Project foundation
 
@@ -717,7 +714,7 @@ record Word(string Text, TimeSpan Start, TimeSpan End, float Probability);
 auto, and the task. The engine is stateless per window, so the streaming commit policy
 (the next task in this block) owns the state.
 
-**Engine.** Implement the engine LE2 picked. For Whisper on Windows ML ORT that is:
+**Engine.** LE2 picked whisper.cpp large-v3-turbo on Vulkan through Whisper.net for GPUs, and Parakeet on sherpa-onnx for CPUs, so the first engine wraps Whisper.net and maps its segments and token timestamps to `Word`. The ONNX path stays here in case LE50's static-cache export wins:
 1. a log-mel front end in C#: 80 or 128 bins, a 400-sample FFT with hop 160, using `System.Numerics.Tensors`, checked against the Python reference to 1e-4;
 2. the encoder run once per window;
 3. a greedy decoder over the merged decoder with the KV cache, which supplies timestamp tokens and suppressed tokens;

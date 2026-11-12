@@ -13,6 +13,12 @@
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
   </PropertyGroup>
 
+  <!-- whisper-ort\ is its own project: sherpa-onnx ships a CPU-only onnxruntime.dll that would
+       collide with the DirectML one. -->
+  <ItemGroup>
+    <Compile Remove="whisper-ort/**" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Whisper.net" Version="1.9.1" />
     <PackageReference Include="Whisper.net.Runtime" Version="1.9.1" />

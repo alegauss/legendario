@@ -2,12 +2,12 @@
 
 ## Block A — Feasibility spikes
 
-- ⏳ **LE2** (deps: —) **Spike: no ASR engine chosen; Whisper on ONNX, whisper.cpp and sherpa-onnx are unmeasured on DirectX GPUs** — Whisper ONNX on Windows ML, onnxruntime-genai, streaming zipformer, captured clips and an AMD GPU are still unmeasured. → §LE2
 - 📋 **LE3** (deps: —) **Spike: no MT model chosen; Opus-MT, MADLAD, HY-MT and small LLMs untested for speed, quality and licence** — Translation runs after every committed sentence, so per-sentence latency matters more than throughput, and NC licences like NLLB's would block redistribution. → §LE3
-- 📋 **LE4** (deps: LE2 ⏳, LE3) **Spike: no streaming policy; chunking, commit and re-translation trade-offs between latency and flicker unknown** — Whisper is not a streaming model, and the commit policy alone decides how long a caption takes to appear and how often it rewrites itself. → §LE4
+- 📋 **LE4** (deps: LE2 ✅, LE3) **Spike: no streaming policy; chunking, commit and re-translation trade-offs between latency and flicker unknown** — Whisper is not a streaming model, and the commit policy alone decides how long a caption takes to appear and how often it rewrites itself. → §LE4
 - 📋 **LE5** (deps: —) **Spike: unknown whether a WPF Fluent window can float click-through and topmost over fullscreen video and games** — The overlay is the product's whole surface, and WPF's AllowsTransparency path is known to cost GPU and break Mica, so the window technique must be proven first. → §LE5
-- 📋 **LE6** (deps: LE2 ⏳, LE3) **Spike: unknown how ASR and MT share one GPU with each other and with the game or video being captioned** — Captions are watched over GPU-heavy content, so contention can blow the latency budget or drop the user's frame rate, and that decides device placement per stage. → §LE6
+- 📋 **LE6** (deps: LE2 ✅, LE3) **Spike: unknown how ASR and MT share one GPU with each other and with the game or video being captioned** — Captions are watched over GPU-heavy content, so contention can blow the latency budget or drop the user's frame rate, and that decides device placement per stage. → §LE6
 - 💭 **LE7** (deps: —) **Spike: Windows Live Captions text is unused as a zero-model ASR source for low-end PCs** — Reading Live Captions through UI Automation, as LiveCaptions-Translator does, would give PCs without a capable GPU captions with no ASR model to download. → §LE7
+- 📋 **LE50** (deps: LE2 ✅) **Spike: ASR untested with a static KV cache, TensorRT-RTX, streaming zipformer, real captured clips or AMD GPUs** — LE2's defaults rest on one RTX machine and read speech, and a static-cache export could make Revelei's provider stack fast enough for ASR. → §LE50
 
 ## Block B — Project foundation
 
@@ -27,7 +27,7 @@
 
 ## Block D — Local inference runtime and models
 
-- 📋 **LE18** (deps: LE8, LE2 ⏳) **No execution-provider stack: nothing picks the GPU, probes Windows ML or DirectML, or falls back to CPU** — Revelei already measured and solved provider choice on DirectX, including its 887A0004 and System32 traps, so porting it gives GPU inference without relearning them. → §LE18
+- 📋 **LE18** (deps: LE8, LE2 ✅) **No execution-provider stack: nothing picks the GPU, probes Windows ML or DirectML, or falls back to CPU** — Revelei already measured and solved provider choice on DirectX, including its 887A0004 and System32 traps, so porting it gives GPU inference without relearning them. → §LE18
 - 📋 **LE19** (deps: LE18, LE3) **No model manifest, downloader or library: ASR, MT and VAD models cannot be fetched, verified or found** — Speech and MT models are multi-file encoder-decoder sets with tokenizers and language pairs, which Modelado's one-file-per-model manifest cannot describe (its MOD124). → §LE19
 - 📋 **LE20** (deps: LE19) **No reproducible pipeline exports, quantises, verifies and publishes the chosen ASR and MT models as ONNX** — Pinned, hash-checked artefacts with licence checks make the manifest trustworthy, and hand-exported files cannot be rebuilt when an upstream model updates. → §LE20
 - 📋 **LE21** (deps: LE4, LE6, LE18) **No real-time scheduler: a batch job queue would let ASR and MT fall behind live audio without bound** — Revelei's single-job channel suits batch work, but captions have deadlines, so stages need bounded queues, priorities and a policy for shedding work when behind. → §LE21
@@ -36,7 +36,7 @@
 
 ## Block E — Streaming speech recognition
 
-- 📋 **LE24** (deps: LE2 ⏳, LE14, LE19, LE21) **No recogniser: speech segments cannot become text, and no engine contract hides the runtime LE2 picks** — The ASR engine may change with hardware tier or model, so the pipeline must see one IRecognizer contract with partial and final results and timestamps. → §LE24
+- 📋 **LE24** (deps: LE2 ✅, LE14, LE19, LE21) **No recogniser: speech segments cannot become text, and no engine contract hides the runtime LE2 picks** — The ASR engine may change with hardware tier or model, so the pipeline must see one IRecognizer contract with partial and final results and timestamps. → §LE24
 - 📋 **LE25** (deps: LE24, LE4) **No streaming commit policy: windows are decoded but nothing decides which words are stable or final** — Committing too early shows wrong words and committing too late shows nothing, so the LE4 policy must become a tested component that owns streaming state. → §LE25
 - 📋 **LE26** (deps: LE24) **Whisper hallucinates on silence, music and noise ("Thanks for watching", repeated lines) and nothing filters it** — One invented subtitle over a quiet scene destroys trust faster than a missed line, and Whisper's known failure modes have cheap, measurable guards. → §LE26
 - 📋 **LE27** (deps: LE25) **Source language is neither detected reliably nor locked, so short clips flip language and translate wrongly** — Per-window detection on 2 s of audio is noisy, and a wrong language makes Whisper transliterate and picks the wrong MT pair, which breaks the entire caption. → §LE27
@@ -79,13 +79,6 @@
 - **Every spike has a README with numbers and a decision** Each spike/<name>/README.md
   states the hardware, the measured table, the chosen option and what was rejected and
   why; the tasks that depend on it cite that decision instead of re-deciding.
-
-## Done when — LE2
-
-- **Whisper ONNX on the Windows ML provider stack is measured beside whisper.cpp** The
-  README in spike/asr-engines has a row for Whisper exported to ONNX running on DirectML
-  or TensorRT-RTX through Windows ML, on the same FLEURS clips and RTX 4060, so the GPU
-  default is chosen between two measured runtimes.
 
 ## Non-goals
 
